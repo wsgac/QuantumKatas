@@ -8,6 +8,8 @@ namespace Quantum.Kata.Measurements {
     open Microsoft.Quantum.Convert;
     open Microsoft.Quantum.Math;
     open Microsoft.Quantum.Arrays;
+    open Microsoft.Quantum.Measurement;
+    open Microsoft.Quantum.Arithmetic;
 
 
     //////////////////////////////////////////////////////////////////
@@ -44,7 +46,7 @@ namespace Quantum.Kata.Measurements {
         // Replace the returned expression with (M(q) == One).
         // Then rebuild the project and rerun the tests - T101_IsQubitOne_Test should now pass!
 
-        return false;
+        return M(q) == One;
     }
 
 
@@ -53,6 +55,9 @@ namespace Quantum.Kata.Measurements {
     // Goal:  change the state of the qubit to |0⟩.
     operation InitializeQubit (q : Qubit) : Unit {
         // ...
+        if (M(q) == One) {
+            X(q);
+        }
     }
 
 
@@ -63,7 +68,8 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubit at the end of the operation does not matter.
     operation IsQubitPlus (q : Qubit) : Bool {
         // ...
-        return false;
+        H(q);
+        return M(q) == Zero;
     }
 
 
@@ -77,7 +83,8 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubit at the end of the operation does not matter.
     operation IsQubitA (alpha : Double, q : Qubit) : Bool {
         // ...
-        return false;
+        Ry(-2.0*alpha, q);
+        return M(q) == Zero;
     }
 
 
@@ -88,7 +95,10 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubits at the end of the operation does not matter.
     operation ZeroZeroOrOneOne (qs : Qubit[]) : Int {
         // ...
-        return -1;
+        if (M(qs[0]) == Zero) {
+            return 0;
+        }
+        return 1;
     }
 
 
@@ -105,7 +115,14 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubits at the end of the operation does not matter.
     operation BasisStateMeasurement (qs : Qubit[]) : Int {
         // ...
-        return -1;
+        mutable res = 0;
+        if (M(qs[0]) == One) {
+            set res += 2;
+        }
+        if (M(qs[1]) == One) {
+            set res += 1;
+        }
+        return res;
     }
 
 
@@ -125,6 +142,12 @@ namespace Quantum.Kata.Measurements {
     //          return 0 corresponds to state |010⟩, and return 1 corresponds to state |001⟩.
     operation TwoBitstringsMeasurement (qs : Qubit[], bits1 : Bool[], bits2 : Bool[]) : Int {
         // ...
+        // return Measure(BoolArrayAsPauli(PauliZ, true, bits1), qs) == Zero ? 0 | 1;
+        for (i in 0..Length(qs)-1) {
+            if (bits1[i] != bits2[i]) {
+                return (M(qs[i]) == One) == bits1[i] ? 0 | 1;
+            }
+        }
         return -1;
     }
 
@@ -155,9 +178,36 @@ namespace Quantum.Kata.Measurements {
     //          return 0 corresponds to state (|010⟩ + |011⟩) / sqrt(2), 
     //          return 1 corresponds to state (|101⟩ + |001⟩) / sqrt(2),
     //          and you can distinguish these states perfectly by measuring the second qubit.
-    operation SuperpositionOneMeasurement (qs : Qubit[], bits1 : Bool[][], bits2 : Bool[][]) : Int {
-        // ...
+
+    function MyAbs(x : Int) : Int {
+        return x < 0 ? -x | x;
+    }
+
+    function findDiscrepancy(bits1: Bool[][], bits2: Bool[][], qs: Qubit[]) : Int {
+        // let Nq = Length(qs);
+        for (q in 0..Length(qs)-1) {
+            mutable n1 = 0;
+            mutable n2 = 0;
+            for (s in 0..Length(bits1)-1) {
+                if (bits1[s][q]) {
+                    set n1 += 1;
+                }
+                if (bits2[s][q]) {
+                    set n2 += 1;
+                }
+            }
+
+            if ((n1 == Length(bits1) and n2 == 0) or (n1 == 0 and n2 == Length(bits2))) {
+                return q;
+            }
+        }
         return -1;
+    }
+
+    operation SuperpositionOneMeasurement (qs : Qubit[], bits1 : Bool[][], bits2 : Bool[][]) : Int {
+        // qubits
+        let totalDiff = findDiscrepancy(bits1, bits2, qs);
+        return ResultAsBool(M(qs[totalDiff])) == bits1[0][totalDiff] ? 0 | 1;
     }
 
 
@@ -180,7 +230,13 @@ namespace Quantum.Kata.Measurements {
     //          return 1 corresponds to state (|111⟩ + |011⟩) / sqrt(2)
     operation SuperpositionMeasurement (qs : Qubit[], bits1 : Bool[][], bits2 : Bool[][]) : Int {
         // ...
-        return -1;
+        let measuredState = ResultArrayAsInt(MultiM(qs));
+        for (s in bits1) {
+            if (BoolArrayAsInt(s)==measuredState) {
+                return 0;
+            }
+        }
+        return 1;
     }
 
 
@@ -193,7 +249,7 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubits at the end of the operation does not matter.
     operation AllZerosOrWState (qs : Qubit[]) : Int {
         // ...
-        return -1;
+        return ResultArrayAsInt(MultiM(qs)) == 0 ? 0 | 1;
     }
 
 
@@ -205,8 +261,8 @@ namespace Quantum.Kata.Measurements {
     //         1 if they were in the W state.
     // The state of the qubits at the end of the operation does not matter.
     operation GHZOrWState (qs : Qubit[]) : Int {
-        // ...
-        return -1;
+        let m = ResultArrayAsInt(MultiM(qs));
+        return (m == 0 or m == (1 <<< Length(qs))-1) ? 0 | 1;
     }
 
 
@@ -223,9 +279,9 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubits at the end of the operation does not matter.
     operation BellState (qs : Qubit[]) : Int {
         // Hint: you need to use 2-qubit gates to solve this task
-
-        // ...
-        return -1;
+        CNOT(qs[0],qs[1]);
+        H(qs[0]);
+        return MeasureInteger(LittleEndian(qs));
     }
 
 
@@ -242,7 +298,9 @@ namespace Quantum.Kata.Measurements {
     // The state of the qubits at the end of the operation does not matter.
     operation TwoQubitState (qs : Qubit[]) : Int {
         // ...
-        return -1;
+        H(qs[0]);
+        H(qs[1]);
+        return MeasureIntegerBE(BigEndian(qs));
     }
 
 
